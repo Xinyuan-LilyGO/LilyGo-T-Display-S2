@@ -17,12 +17,14 @@
 #include <sys/unistd.h>
 #include <sys/stat.h>
 #include "driver/adc.h"
-
+#include <sys/time.h>
+#include "esp_sleep.h"
 
 static const char *TAG = "demo";
 #define SPIFIFOSIZE                                 16
 #define SWAPBYTES(i)                                ((i>>8) | (i<<8))
 
+#define ST7789_SLPIN                                0x10
 #define ST7789_SLPOUT                               0x11
 #define ST7789_NORON                                0x13
 #define ST7789_MADCTL                               0x36      // Memory data access control
@@ -107,6 +109,8 @@ static const char *TAG = "demo";
 #define SD_PIN_NUM_CLK  12
 #define SD_PIN_NUM_CS   10
 
+// IO14 is connected to the SD card of the board, the power control of the LED is IO pin
+#define SD_POWER_GPIO  14
 
 uint16_t colstart = 52;
 uint16_t rowstart = 40;
@@ -533,9 +537,23 @@ uint32_t read_adc_raw()
     adc_reading /= NO_OF_SAMPLES;
     return adc_reading;
 }
-
+static RTC_DATA_ATTR struct timeval sleep_enter_time;
 void app_main(void)
 {
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    int sleep_time_ms = (now.tv_sec - sleep_enter_time.tv_sec) * 1000 + (now.tv_usec - sleep_enter_time.tv_usec) / 1000;
+
+    switch (esp_sleep_get_wakeup_cause()) {
+
+    case ESP_SLEEP_WAKEUP_TIMER:
+        printf("Wake up from timer. Time spent in deep sleep: %dms\n", sleep_time_ms);
+        break;
+    case ESP_SLEEP_WAKEUP_UNDEFINED:
+    default:
+        printf("Not a deep sleep reset\n");
+
+    }
     //Configure ADC
     adc1_config_width(ADC_WIDTH_BIT_13);
 
@@ -588,14 +606,38 @@ void app_main(void)
 
     char buff[256];
 
-    while (1) {
-        setRotation( r);
-        fillScreen( rand() % 0xFFFF);
-        uint32_t raw = read_adc_raw();
-        printf("Raw: %d\n", raw);
-        snprintf(buff, sizeof(buff), "raw:%u", raw);
-        drawString(0,  0, buff, TFT_GREEN);
-        vTaskDelay(10000 / portTICK_RATE_MS);
-        r = r + 1 > 3 ? 0 : r + 1;
-    }
+    lcd_cmd(ST7789_DISPOFF);
+
+    lcd_cmd(ST7789_SLPIN);
+
+    gpio_pad_select_gpio(SD_POWER_GPIO);
+    /* Set the GPIO as a push/pull output */
+    gpio_set_direction(SD_POWER_GPIO, GPIO_MODE_OUTPUT);
+    /* Blink off (output low) */
+    printf("Turning on the LED\n");
+    gpio_set_level(SD_POWER_GPIO, 1);
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+
+    const int wakeup_time_sec = 60;
+    printf("Enabling timer wakeup, %ds\n", wakeup_time_sec);
+    esp_sleep_enable_timer_wakeup(wakeup_time_sec * 1000000);
+
+    printf("Entering deep sleep\n");
+    gettimeofday(&sleep_enter_time, NULL);
+
+    esp_deep_sleep_start();
+
+    // Rotation test
+    /*
+        while (1) {
+            setRotation( r);
+            fillScreen( rand() % 0xFFFF);
+            uint32_t raw = read_adc_raw();
+            printf("Raw: %d\n", raw);
+            snprintf(buff, sizeof(buff), "raw:%u", raw);
+            drawString(0,  0, buff, TFT_GREEN);
+            vTaskDelay(10000 / portTICK_RATE_MS);
+            r = r + 1 > 3 ? 0 : r + 1;
+        }
+    */
 }

@@ -110,7 +110,7 @@ static const char *TAG = "demo";
 #define SD_PIN_NUM_CS   10
 
 // IO14 is connected to the SD card of the board, the power control of the LED is IO pin
-#define SD_POWER_GPIO  14
+#define POWER_PIN  14
 
 uint16_t colstart = 52;
 uint16_t rowstart = 40;
@@ -120,6 +120,7 @@ uint16_t _width = 135;
 uint16_t _height = 240;
 
 static spi_device_handle_t spi;
+static RTC_DATA_ATTR struct timeval sleep_enter_time;
 
 
 void drawString(uint16_t x, uint16_t y, const char *p, uint16_t color);
@@ -527,17 +528,19 @@ void drawString(uint16_t x, uint16_t y, const char *p, uint16_t color)
     }
 }
 
-uint32_t read_adc_raw()
-{
-    uint32_t adc_reading = 0;
-    //Multisampling
-    for (int i = 0; i < NO_OF_SAMPLES; i++) {
-        adc_reading += adc1_get_raw((adc1_channel_t)ADC_CHANNEL_8);
-    }
-    adc_reading /= NO_OF_SAMPLES;
-    return adc_reading;
-}
-static RTC_DATA_ATTR struct timeval sleep_enter_time;
+
+// uint32_t read_adc_raw()
+// {
+//     uint32_t adc_reading = 0;
+//     //Multisampling
+//     for (int i = 0; i < NO_OF_SAMPLES; i++) {
+//         adc_reading += adc1_get_raw((adc1_channel_t)ADC_CHANNEL_8);
+//     }
+//     adc_reading /= NO_OF_SAMPLES;
+//     return adc_reading;
+// }
+
+
 void app_main(void)
 {
     struct timeval now;
@@ -560,6 +563,14 @@ void app_main(void)
     // GPIO9 ADC1 CHANNEL 8
     adc1_config_channel_atten(ADC_CHANNEL_8, ADC_ATTEN_DB_0);
 
+
+    gpio_pad_select_gpio(POWER_PIN);
+    /* Set the GPIO as a push/pull output */
+    gpio_set_direction(POWER_PIN, GPIO_MODE_OUTPUT);
+
+    /* Blink off (output low) */
+    printf("Turning on the peripherals power\n");
+    gpio_set_level(POWER_PIN, 1);
 
     esp_err_t ret;
     spi_bus_config_t buscfg = {
@@ -600,23 +611,28 @@ void app_main(void)
 
     sdcard_init();
 
-    vTaskDelay(3000 / portTICK_RATE_MS);
-
     uint8_t r = 0;
-
     char buff[256];
 
+    // Rotation test
+    /*
+    while (1) {
+        setRotation( r);
+        fillScreen( rand() % 0xFFFF);
+        uint32_t raw = read_adc_raw();
+        printf("Raw: %d\n", raw);
+        snprintf(buff, sizeof(buff), "raw:%u", raw);
+        drawString(0,  0, buff, TFT_GREEN);
+        vTaskDelay(10000 / portTICK_RATE_MS);
+        r = r + 1 > 3 ? 0 : r + 1;
+    }
+    */
+
+    drawString(0,  18, "Now goto deepsleep", TFT_GREEN);
+    vTaskDelay(3000 / portTICK_RATE_MS);
+
     lcd_cmd(ST7789_DISPOFF);
-
     lcd_cmd(ST7789_SLPIN);
-
-    gpio_pad_select_gpio(SD_POWER_GPIO);
-    /* Set the GPIO as a push/pull output */
-    gpio_set_direction(SD_POWER_GPIO, GPIO_MODE_OUTPUT);
-    /* Blink off (output low) */
-    printf("Turning on the LED\n");
-    gpio_set_level(SD_POWER_GPIO, 1);
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
 
     const int wakeup_time_sec = 60;
     printf("Enabling timer wakeup, %ds\n", wakeup_time_sec);
@@ -626,18 +642,4 @@ void app_main(void)
     gettimeofday(&sleep_enter_time, NULL);
 
     esp_deep_sleep_start();
-
-    // Rotation test
-    /*
-        while (1) {
-            setRotation( r);
-            fillScreen( rand() % 0xFFFF);
-            uint32_t raw = read_adc_raw();
-            printf("Raw: %d\n", raw);
-            snprintf(buff, sizeof(buff), "raw:%u", raw);
-            drawString(0,  0, buff, TFT_GREEN);
-            vTaskDelay(10000 / portTICK_RATE_MS);
-            r = r + 1 > 3 ? 0 : r + 1;
-        }
-    */
 }

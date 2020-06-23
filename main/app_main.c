@@ -122,6 +122,10 @@ uint16_t _height = 240;
 static spi_device_handle_t spi;
 static RTC_DATA_ATTR struct timeval sleep_enter_time;
 
+// The ADC correction function is still under test,
+// so here the default reference voltage is set to 1100,
+// which is consistent with esp32, this is only temporary
+#define DEFAULT_VERF                            1100
 
 void drawString(uint16_t x, uint16_t y, const char *p, uint16_t color);
 
@@ -529,16 +533,16 @@ void drawString(uint16_t x, uint16_t y, const char *p, uint16_t color)
 }
 
 
-// uint32_t read_adc_raw()
-// {
-//     uint32_t adc_reading = 0;
-//     //Multisampling
-//     for (int i = 0; i < NO_OF_SAMPLES; i++) {
-//         adc_reading += adc1_get_raw((adc1_channel_t)ADC_CHANNEL_8);
-//     }
-//     adc_reading /= NO_OF_SAMPLES;
-//     return adc_reading;
-// }
+uint32_t read_adc_raw()
+{
+    uint32_t adc_reading = 0;
+    //Multisampling
+    for (int i = 0; i < NO_OF_SAMPLES; i++) {
+        adc_reading += adc1_get_raw((adc1_channel_t)ADC_CHANNEL_8);
+    }
+    adc_reading /= NO_OF_SAMPLES;
+    return adc_reading;
+}
 
 
 void app_main(void)
@@ -561,7 +565,7 @@ void app_main(void)
     adc1_config_width(ADC_WIDTH_BIT_13);
 
     // GPIO9 ADC1 CHANNEL 8
-    adc1_config_channel_atten(ADC_CHANNEL_8, ADC_ATTEN_DB_0);
+    adc1_config_channel_atten(ADC_CHANNEL_8, ADC_ATTEN_DB_11);
 
 
     gpio_pad_select_gpio(POWER_PIN);
@@ -611,23 +615,20 @@ void app_main(void)
 
     sdcard_init();
 
-    uint8_t r = 0;
-    char buff[256];
-
-    // Rotation test
+    // The current ADC calibration function is temporarily unavailable,
+    // so the ADC voltage is not accurate
     /*
-    while (1) {
-        setRotation( r);
-        fillScreen( rand() % 0xFFFF);
-        uint32_t raw = read_adc_raw();
-        printf("Raw: %d\n", raw);
-        snprintf(buff, sizeof(buff), "raw:%u", raw);
-        drawString(0,  0, buff, TFT_GREEN);
-        vTaskDelay(10000 / portTICK_RATE_MS);
-        r = r + 1 > 3 ? 0 : r + 1;
-    }
+        for (int i = 0; i < 10; i++) {
+            uint32_t raw = read_adc_raw();
+            char buff[128];
+            float battery_voltage = ((float)raw / 8191.0) * 2.0 * 3.3 * (DEFAULT_VERF / 1000.0);
+            snprintf(buff, 128, "%.2fV raw:%u", battery_voltage, raw);
+            fillScreen(TFT_BLACK);
+            drawString(0, 0, buff, TFT_GREEN);
+            vTaskDelay(1000 / portTICK_RATE_MS);
+        }
+        fillScreen(TFT_BLACK);
     */
-
     drawString(0,  18, "Now goto deepsleep", TFT_GREEN);
     vTaskDelay(3000 / portTICK_RATE_MS);
 
